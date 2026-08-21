@@ -4,39 +4,68 @@ from pydantic import BaseModel
 app = FastAPI()
 
 
+# --- Request/response schemas -----------------------------------------
+# These define the exact shape of data each endpoint accepts and returns.
+# FastAPI uses them to automatically validate incoming requests and to
+# generate the interactive docs at /docs.
+
 class IndexRequest(BaseModel):
-    repo_path: str
+    """Input for POST /index — the repo to chunk and embed."""
+    repo_path: str  # filesystem path to the target repo, e.g. "../httpie"
 
 
 class IndexResponse(BaseModel):
+    """Output of POST /index — confirms indexing completed."""
     status: str
-    chunks_indexed: int
+    chunks_indexed: int  # number of function/class chunks stored
 
 
 class QueryRequest(BaseModel):
+    """Input for POST /query — a natural language question about the repo."""
     question: str
-    top_k: int = 5
+    top_k: int = 5  # number of most-similar chunks to retrieve as context
 
 
 class QueryResponse(BaseModel):
+    """Output of POST /query — the answer plus the chunks used to produce it."""
     answer: str
-    sources: list[dict]
+    sources: list[dict]  # e.g. [{"file": ..., "start_line": ..., "end_line": ...}]
 
+
+# --- Endpoints -----------------------------------------------------------
 
 @app.get("/health")
 def health():
+    """
+    Function Description:
+        Basic liveness check — confirms the service is running.
+    """
     return {"status": "ok"}
 
 
 @app.post("/index", response_model=IndexResponse)
 def index_repo(request: IndexRequest):
-    # TODO (Day 2-3): actually chunk + embed the repo
+    """
+    Function Description:
+        Index a target repository: parse its Python files into function/class
+        level chunks, embed each chunk, and store them in the vector database
+        for later retrieval.
+    """
+    # TODO: chunk the repo and store embeddings in the vector store
     return IndexResponse(status="stubbed", chunks_indexed=0)
 
 
 @app.post("/query", response_model=QueryResponse)
 def query_codebase(request: QueryRequest):
-    # TODO (Day 4): actually run retrieval + LLM
+    """
+    Function Description:
+        Answer a natural language question about the indexed repository.
+
+        Retrieves the top_k most relevant code chunks via semantic search,
+        then passes them to the LLM as grounding context so the answer is
+        based on actual repo content rather than the model's general knowledge.
+    """
+    # TODO: run retrieval against the vector store and call the LLM
     return QueryResponse(
         answer=f"You asked: {request.question} (not implemented yet)",
         sources=[],
