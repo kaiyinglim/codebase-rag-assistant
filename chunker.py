@@ -33,26 +33,24 @@ def get_python_files(repo_path: str) -> list[Path]:
         if not any(part in skip_dirs for part in p.parts) # p.parts splits the path into pieces; skip if any piece matches skip_dirs
     ]
 
-
 def chunk_file(file_path: Path, repo_root: Path) -> list[dict]:
-    """Parses a single Python file into function/class-level chunks.
+    """Parses a Python file into function, method, and class-level chunks.
 
-    Walks the file's AST at every nesting depth, so methods defined
-    inside a class each produce their own chunk rather than being
-    absorbed into one chunk for the whole class. This improves
-    retrieval precision — a question about one method can retrieve
-    just that method instead of an entire surrounding class.
+    Functions and methods keep their complete source code. Classes are
+    represented only by their declaration and optional docstring because
+    their methods are already extracted separately. This avoids duplicating
+    an entire large class in a single embedding chunk.
 
     Args:
         file_path: Path to the .py file to parse.
-        repo_root: Path to the repo's root directory, used to compute a clean relative path for citation purposes.
+        repo_root: Root of the repository, used for relative file paths.
 
     Returns:
-        A list of dicts, one per function/class found in the file.
-        Each dict has the keys: name, type, file, start_line, end_line,
-        and text. Returns an empty list if the file fails to parse.
+        A list of chunk dictionaries containing source text and metadata.
+        Returns an empty list if the file cannot be parsed.
     """
     source = file_path.read_text(encoding="utf-8", errors="ignore")
+    source_lines = source.splitlines(keepends=True)
 
     try:
         # parse the file into an AST — a tree representing its structure
@@ -65,20 +63,56 @@ def chunk_file(file_path: Path, repo_root: Path) -> list[dict]:
 
     # visits every node at every depth
     for node in ast.walk(tree):
-        # only keep functions and classes
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             # pull the exact original source text for this node's line range
             text = ast.get_source_segment(source, node)
+
             if text is None:
                 continue # couldn't extract source text — skip this node
 
             chunks.append({
                 "name": node.name,
-                "type": "class" if isinstance(node, ast.ClassDef) else "function",
+                "type": "function",
                 "file": str(file_path.relative_to(repo_root)),
                 "start_line": node.lineno,
                 "end_line": node.end_lineno,
-                "text": text,   # the actual source code
+                "text": text, # the actual source code
+            })
+
+        elif isinstance(node, ast.ClassDef):
+            # keep only the class declaration and optional docstring
+            if node.body:
+                first_body_line = node.body[0].lineno
+            else:
+                first_body_line = node.end_lineno
+
+            header = "".join(
+                source_lines[node.lineno - 1:first_body_line - 1]
+            ).rstrip()
+
+            end_line = first_body_line - 1
+            text = header
+
+            # include the class docstring if one exists.
+            if (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)
+            ):
+                docstring_text = ast.get_source_segment(source, node.body[0])
+
+                if docstring_text:
+                    text = f"{header}\n    {docstring_text}"
+                    end_line = node.body[0].end_lineno
+
+            chunks.append({
+                "name": node.name,
+                "type": "class",
+                "file": str(file_path.relative_to(repo_root)),
+                "start_line": node.lineno,
+                "end_line": end_line,
+                "text": text,
             })
 
     return chunks
