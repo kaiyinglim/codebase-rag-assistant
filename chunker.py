@@ -63,60 +63,63 @@ def chunk_file(file_path: Path, repo_root: Path) -> list[dict]:
 
     # visits every node at every depth
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            # pull the exact original source text for this node's line range
-            text = ast.get_source_segment(source, node)
+        # only keep functions, async functions, and classes
+        if not isinstance(
+            node,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+        ):
+            continue
 
-            if text is None:
-                continue # couldn't extract source text — skip this node
+        # Include decorators by starting from the earliest decorator line.
+        start_line = (
+            min(decorator.lineno for decorator in node.decorator_list)
+            if node.decorator_list
+            else node.lineno
+        )
+
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # pull the exact original source text, including decorators
+            text = "".join(
+                source_lines[start_line - 1:node.end_lineno]
+            )
 
             chunks.append({
                 "name": node.name,
                 "type": "function",
                 "file": str(file_path.relative_to(repo_root)),
-                "start_line": node.lineno,
+                "start_line": start_line,
                 "end_line": node.end_lineno,
-                "text": text, # the actual source code
+                "text": text,  # the actual source code
             })
 
         elif isinstance(node, ast.ClassDef):
-            # keep only the class declaration and optional docstring
-            if node.body:
-                first_body_line = node.body[0].lineno
-            else:
-                first_body_line = node.end_lineno
-
-            header = "".join(
-                source_lines[node.lineno - 1:first_body_line - 1]
-            ).rstrip()
-
+            # Methods are extracted separately, so only keep the class
+            # declaration and optional docstring instead of the whole body.
+            first_body_line = node.body[0].lineno
             end_line = first_body_line - 1
-            text = header
 
-            # include the class docstring if one exists.
+            # Include the class docstring if one exists.
             if (
-                node.body
-                and isinstance(node.body[0], ast.Expr)
+                isinstance(node.body[0], ast.Expr)
                 and isinstance(node.body[0].value, ast.Constant)
                 and isinstance(node.body[0].value.value, str)
             ):
-                docstring_text = ast.get_source_segment(source, node.body[0])
+                end_line = node.body[0].end_lineno
 
-                if docstring_text:
-                    text = f"{header}\n    {docstring_text}"
-                    end_line = node.body[0].end_lineno
+            text = "".join(
+                source_lines[start_line - 1:end_line]
+            ).rstrip()
 
             chunks.append({
                 "name": node.name,
                 "type": "class",
                 "file": str(file_path.relative_to(repo_root)),
-                "start_line": node.lineno,
+                "start_line": start_line,
                 "end_line": end_line,
-                "text": text,
+                "text": text,  # class declaration and optional docstring
             })
 
     return chunks
-
 
 def chunk_repo(repo_path: str) -> list[dict]:
     """Chunks every Python file in a repo into one combined list.
