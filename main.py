@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from chunker import chunk_repo
+from embedder import embed_and_store_chunks
+
 app = FastAPI()
 
 
@@ -42,18 +45,31 @@ def health():
     """
     return {"status": "ok"}
 
-
 @app.post("/index", response_model=IndexResponse)
 def index_repo(request: IndexRequest):
-    """
-    Function Description:
-        Index a target repository: parse its Python files into function/class
-        level chunks, embed each chunk, and store them in the vector database
-        for later retrieval.
-    """
-    # TODO: chunk the repo and store embeddings in the vector store
-    return IndexResponse(status="stubbed", chunks_indexed=0)
+    """Indexes a Python repository for semantic code retrieval.
 
+    Parses the repository into function/class-level chunks, generates
+    embeddings for those chunks, and stores them in the persistent
+    ChromaDB collection.
+
+    Args:
+        request: Request containing the filesystem path of the repository
+            to index.
+
+    Returns:
+        An IndexResponse reporting how many chunks were indexed.
+    """
+    # Parse the target repository into source-code chunks.
+    chunks = chunk_repo(request.repo_path)
+
+    # Generate local Jina embeddings and persist them in ChromaDB.
+    stored_count = embed_and_store_chunks(chunks)
+
+    return IndexResponse(
+        status="success",
+        chunks_indexed=stored_count,
+    )
 
 @app.post("/query", response_model=QueryResponse)
 def query_codebase(request: QueryRequest):
