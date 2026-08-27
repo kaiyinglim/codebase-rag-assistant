@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 from chunker import chunk_repo
 from embedder import embed_and_store_chunks
+from rag import answer_question
 
 app = FastAPI()
 
@@ -73,16 +74,26 @@ def index_repo(request: IndexRequest):
 
 @app.post("/query", response_model=QueryResponse)
 def query_codebase(request: QueryRequest):
-    """
-    Function Description:
-        Answer a natural language question about the indexed repository.
+    """Answers a question about the indexed codebase.
 
-        Retrieves the top_k most relevant code chunks via semantic search,
-        then passes them to the LLM as grounding context so the answer is
-        based on actual repo content rather than the model's general knowledge.
+    Retrieves the most relevant source-code chunks from ChromaDB and
+    provides them to DeepSeek as grounding context for the answer.
+
+    Args:
+        request: Request containing the question and number of chunks
+            to retrieve.
+
+    Returns:
+        A QueryResponse containing the generated answer and source
+        metadata for the retrieved chunks.
     """
-    # TODO: run retrieval against the vector store and call the LLM
+    # Run retrieval and grounded LLM generation through the RAG pipeline.
+    result = answer_question(
+        question=request.question,
+        top_k=request.top_k,
+    )
+
     return QueryResponse(
-        answer=f"You asked: {request.question} (not implemented yet)",
-        sources=[],
+        answer=result["answer"],
+        sources=result["sources"],
     )
