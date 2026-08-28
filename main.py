@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from chunker import chunk_repo
 from embedder import embed_and_store_chunks
 from rag import answer_question
+from dependency_analyzer import find_dependents
 
 app = FastAPI()
 
@@ -36,6 +37,18 @@ class QueryResponse(BaseModel):
     sources: list[dict]  # e.g. [{"file": ..., "start_line": ..., "end_line": ...}]
 
 
+class DependencyResponse(BaseModel):
+    """Output for GET /dependencies.
+
+    Attributes:
+        dependency: Module or imported symbol that was searched for.
+        dependents: Repository-relative files that depend on the target.
+    """
+
+    dependency: str
+    dependents: list[str]
+
+
 # --- Endpoints -----------------------------------------------------------
 
 @app.get("/health")
@@ -45,6 +58,7 @@ def health():
         Basic liveness check — confirms the service is running.
     """
     return {"status": "ok"}
+
 
 @app.post("/index", response_model=IndexResponse)
 def index_repo(request: IndexRequest):
@@ -72,6 +86,7 @@ def index_repo(request: IndexRequest):
         chunks_indexed=stored_count,
     )
 
+
 @app.post("/query", response_model=QueryResponse)
 def query_codebase(request: QueryRequest):
     """Answers a question about the indexed codebase.
@@ -96,4 +111,36 @@ def query_codebase(request: QueryRequest):
     return QueryResponse(
         answer=result["answer"],
         sources=result["sources"],
+    )
+
+
+@app.get("/dependencies", response_model=DependencyResponse)
+def get_dependencies(
+    repo_path: str,
+    dependency: str,
+):
+    """Finds repository files that depend on a module or imported symbol.
+
+    Uses deterministic AST-based import analysis rather than semantic
+    retrieval, because dependency relationships can be identified directly
+    from Python import statements.
+
+    Args:
+        repo_path: Filesystem path to the repository to analyze.
+        dependency: Module or imported symbol to search for.
+
+    Returns:
+        A DependencyResponse containing the requested dependency and all
+        repository files that import it.
+    """
+    # Run deterministic dependency analysis on the requested repository.
+    dependents = find_dependents(
+        repo_path=repo_path,
+        dependency=dependency,
+    )
+
+    # Return a structured response.
+    return DependencyResponse(
+        dependency=dependency,
+        dependents=dependents,
     )
