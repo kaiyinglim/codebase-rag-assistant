@@ -69,17 +69,74 @@ def build_dependency_map(repo_path: str) -> dict[str, list[str]]:
     return dependency_map
 
 
+def find_dependents(repo_path: str, dependency: str) -> list[str]:
+    """Finds files that depend on a given module or imported symbol.
+
+    A dependency matches either the exact imported path or any symbol
+    imported from that path. 
+
+    Args:
+        repo_path: Filesystem path to the Python repository.
+        dependency: Module or symbol path to search for.
+
+    Returns:
+        A sorted list of repository-relative file paths that import the
+        requested dependency.
+
+    Raises:
+        ValueError: If the dependency name is empty.
+    """
+    dependency = dependency.strip()
+
+    if not dependency:
+        raise ValueError("Dependency cannot be empty.")
+
+    dependency_map = build_dependency_map(repo_path)
+    dependents = []
+
+    for file_path, imports in dependency_map.items():
+        # Match the module itself or symbols imported from that module.
+        if any(
+            imported == dependency
+            or imported.startswith(f"{dependency}.")
+            for imported in imports
+        ):
+            # Each matching file only needs to appear once in the result.
+            dependents.append(file_path)
+
+    return sorted(dependents)
+
+
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) != 2:
-        print("Usage: python dependency_analyzer.py <path_to_target_repo>")
+    if len(sys.argv) not in (2, 3):
+        print(
+            "Usage: python dependency_analyzer.py "
+            "<path_to_target_repo> [dependency]"
+        )
         sys.exit(1)
 
-    dependencies = build_dependency_map(sys.argv[1])
+    repo_path = sys.argv[1]
 
-    for file, imports in list(dependencies.items())[:10]:
-        print(f"\n{file}")
+    if len(sys.argv) == 3:
+        dependency = sys.argv[2]
+        dependents = find_dependents(repo_path, dependency)
 
-        for imported_module in imports:
-            print(f"  -> {imported_module}")
+        print(f"\nFiles depending on {dependency}:")
+
+        if not dependents:
+            print("  No dependencies found.")
+        else:
+            for file_path in dependents:
+                print(f"  -> {file_path}")
+
+    else:
+        dependencies = build_dependency_map(repo_path)
+
+        # Print a small sample when no dependency is supplied.
+        for file_path, imports in list(dependencies.items())[:10]:
+            print(f"\n{file_path}")
+
+            for imported_module in imports:
+                print(f"  -> {imported_module}")
