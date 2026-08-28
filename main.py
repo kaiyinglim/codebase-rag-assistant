@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from chunker import chunk_repo
@@ -115,10 +115,7 @@ def query_codebase(request: QueryRequest):
 
 
 @app.get("/dependencies", response_model=DependencyResponse)
-def get_dependencies(
-    repo_path: str,
-    dependency: str,
-):
+def get_dependencies(repo_path: str, dependency: str):
     """Finds repository files that depend on a module or imported symbol.
 
     Uses deterministic AST-based import analysis rather than semantic
@@ -133,13 +130,21 @@ def get_dependencies(
         A DependencyResponse containing the requested dependency and all
         repository files that import it.
     """
-    # Run deterministic dependency analysis on the requested repository.
-    dependents = find_dependents(
-        repo_path=repo_path,
-        dependency=dependency,
-    )
+    try:
+        # Find all files in the repository that import this dependency.
+        dependents = find_dependents(
+            repo_path=repo_path,
+            dependency=dependency,
+        )
 
-    # Return a structured response.
+    except ValueError as error:
+        # Return a 400 response when the input is invalid.
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    # Return the dependency together with the matching files.
     return DependencyResponse(
         dependency=dependency,
         dependents=dependents,
