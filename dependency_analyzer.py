@@ -56,12 +56,31 @@ def build_dependency_map(repo_path: str) -> dict[str, list[str]]:
 
     Returns:
         A dictionary mapping each Python file to the modules it imports.
+
+    Raises:
+        ValueError: If the repository path does not exist or is not a
+            directory.
     """
     repo_root = Path(repo_path)
+
+    # Reject a mistyped or missing repository instead of returning no results.
+    if not repo_root.exists():
+        raise ValueError(
+            f"Repository path does not exist: {repo_path}"
+        )
+
+    # A repository must be a directory.
+    if not repo_root.is_dir():
+        raise ValueError(
+            f"Repository path is not a directory: {repo_path}"
+        )
+
     dependency_map = {}
 
+    # Analyze every Python source file discovered in the repository.
     for file_path in get_python_files(repo_path):
         relative_path = str(file_path.relative_to(repo_root))
+
         imports = sorted(get_imports(file_path))
 
         dependency_map[relative_path] = imports
