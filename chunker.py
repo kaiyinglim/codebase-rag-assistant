@@ -133,8 +133,25 @@ def chunk_repo(repo_path: str) -> list[dict]:
     Returns:
         A flat list of chunk dicts (see chunk_file for the schema),
         combined across every Python file in the repo.
+    
+    Raises:
+        ValueError: If the repository path does not exist or is not a
+            directory.
     """
     repo_root = Path(repo_path)
+
+    # Make sure the repository exists before trying to scan it.
+    if not repo_root.exists():
+        raise ValueError(
+            f"Repository path does not exist: {repo_path}"
+        )
+
+    # Repository path should point to a folder.
+    if not repo_root.is_dir():
+        raise ValueError(
+            f"Repository path is not a directory: {repo_path}"
+        )
+    
     all_chunks = []
 
     for file_path in get_python_files(repo_path):
