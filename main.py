@@ -160,6 +160,13 @@ def query_codebase(request: QueryRequest):
             detail=str(error),
         ) from error
 
+    except RuntimeError as error:
+        # Return a server-side error when DeepSeek cannot generate an answer.
+        raise HTTPException(
+            status_code=502,
+            detail=str(error),
+        ) from error
+
     # Return the generated answer and the code chunks used for it.
     return QueryResponse(
         answer=result["answer"],
