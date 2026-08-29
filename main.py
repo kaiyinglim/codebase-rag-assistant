@@ -106,12 +106,22 @@ def index_repo(request: IndexRequest):
 
     Returns:
         An IndexResponse reporting how many chunks were indexed.
-    """
-    # Parse the target repository into source-code chunks.
-    chunks = chunk_repo(request.repo_path)
 
-    # Generate local Jina embeddings and persist them in ChromaDB.
-    stored_count = embed_and_store_chunks(chunks)
+    Raises:
+        HTTPException: If the repository path is invalid.
+    """
+    try: 
+        # Parse the target repository into source-code chunks.
+        chunks = chunk_repo(request.repo_path)
+
+        # Generate local Jina embeddings and persist them in ChromaDB.
+        stored_count = embed_and_store_chunks(chunks)
+
+    except ValueError as error:
+            raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
 
     return IndexResponse(
         status="success",
