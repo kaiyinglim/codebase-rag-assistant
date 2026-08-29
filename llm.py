@@ -7,7 +7,7 @@ DeepSeek to answer using only that supplied context.
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 load_dotenv()
 
@@ -73,20 +73,22 @@ def generate_answer(question: str, context: str) -> str:
         f"QUESTION:\n{question}"
     )
 
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": user_message,
-            },
-        ],
-        stream=False,
-    )
+    try:
+        # Send the grounded question and code context to DeepSeek.
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+            stream=False,
+        )
+
+    except OpenAIError as error:
+        # Hide provider-specific errors from the rest of the application.
+        raise RuntimeError(
+            "DeepSeek request failed."
+        ) from error
 
     answer = response.choices[0].message.content
 
