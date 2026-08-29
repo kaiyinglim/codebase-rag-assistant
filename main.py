@@ -6,6 +6,14 @@ from embedder import embed_and_store_chunks
 from rag import answer_question
 from dependency_analyzer import find_dependents
 
+import logging
+from time import perf_counter
+
+# Show useful application events in the terminal.
+logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
 
 
@@ -110,6 +118,9 @@ def index_repo(request: IndexRequest):
     Raises:
         HTTPException: If the repository path is invalid.
     """
+    # Start timing before the indexing work begins.
+    start_time = perf_counter()
+
     try: 
         # Parse the target repository into source-code chunks.
         chunks = chunk_repo(request.repo_path)
@@ -118,10 +129,22 @@ def index_repo(request: IndexRequest):
         stored_count = embed_and_store_chunks(chunks)
 
     except ValueError as error:
-            raise HTTPException(
+        # Log rejected requests so they are visible in the server output.
+        logger.warning("Index request failed: %s", error)
+
+        raise HTTPException(
             status_code=400,
             detail=str(error),
         ) from error
+
+    # How long the full indexing process took.
+    elapsed_time = perf_counter() - start_time
+
+    logger.info(
+        "Indexed %d chunks in %.2f seconds",
+        stored_count,
+        elapsed_time,
+    )
 
     return IndexResponse(
         status="success",
@@ -147,13 +170,20 @@ def query_codebase(request: QueryRequest):
     Raises:
         HTTPException: If the query cannot be processed.
     """
+    # Measure the complete retrieval and answer-generation time.
+    start_time = perf_counter()
+
     try:
         # Run retrieval and grounded LLM generation through the RAG pipeline.
         result = answer_question(
             question=request.question,
             top_k=request.top_k,
         )
+
     except ValueError as error:
+        # Log problems such as querying an empty index.
+        logger.warning("Query request failed: %s", error)
+
         # Return an error if the RAG pipeline cannot process the query.
         raise HTTPException(
             status_code=400,
@@ -161,11 +191,23 @@ def query_codebase(request: QueryRequest):
         ) from error
 
     except RuntimeError as error:
+        # Log failures from the external LLM service.
+        logger.error("Answer generation failed: %s", error)
+
         # Return a server-side error when DeepSeek cannot generate an answer.
         raise HTTPException(
             status_code=502,
             detail=str(error),
         ) from error
+    
+    # Record how long retrieval and answer generation took together.
+    elapsed_time = perf_counter() - start_time
+
+    logger.info(
+        "Answered query with top_k=%d in %.2f seconds",
+        request.top_k,
+        elapsed_time,
+    )
 
     # Return the generated answer and the code chunks used for it.
     return QueryResponse(
@@ -189,7 +231,13 @@ def get_dependencies(repo_path: str, dependency: str):
     Returns:
         A DependencyResponse containing the requested dependency and all
         repository files that import it.
+
+    Raises:
+        HTTPException: If the repository path or dependency is invalid.
     """
+    # Start timing the dependency scan.
+    start_time = perf_counter()
+
     try:
         # Find all files in the repository that import this dependency.
         dependents = find_dependents(
@@ -198,12 +246,25 @@ def get_dependencies(repo_path: str, dependency: str):
         )
 
     except ValueError as error:
+        # Log invalid dependency requests.
+        logger.warning("Dependency request failed: %s", error)
+
         # Return a 400 response when the input is invalid.
         raise HTTPException(
             status_code=400,
             detail=str(error),
         ) from error
 
+    # Record how long the dependency lookup took.
+    elapsed_time = perf_counter() - start_time
+
+    logger.info(
+        "Found %d dependents for %s in %.2f seconds",
+        len(dependents),
+        dependency,
+        elapsed_time,
+    )
+    
     # Return the dependency together with the matching files.
     return DependencyResponse(
         dependency=dependency,
