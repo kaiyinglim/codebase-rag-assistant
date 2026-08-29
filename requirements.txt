@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+chromadb
+openai
+python-dotenv
+sentence-transformers==5.7.0
+transformers==4.57.1
+pytest
+httpx
