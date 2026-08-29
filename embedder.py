@@ -45,12 +45,29 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return embeddings.tolist()
 
 
-def embed_and_store_chunks(chunks: list[dict]) -> int:
-    """Embeds chunks in batches and upserts them into ChromaDB.
+def reset_collection():
+    """Deletes the existing collection so a new index starts empty.
 
-    Processes chunks BATCH_SIZE at a time and stores each embedding
-    alongside its source code and metadata. Upsert allows records with
-    existing IDs to be updated when indexing is run again.
+    Without this, indexing another repository would upsert into the same
+    collection and leave old chunks searchable.
+    """
+    chroma_client = get_chroma_client()
+
+    try:
+        chroma_client.delete_collection(COLLECTION_NAME)
+    except ValueError:
+        # No existing collection means there is nothing to clear.
+        pass
+
+    return chroma_client.get_or_create_collection(COLLECTION_NAME)
+
+
+def embed_and_store_chunks(chunks: list[dict]) -> int:
+    """Embeds chunks in batches and stores them in a fresh ChromaDB collection.
+
+    Clears any previously indexed chunks first so each /index call represents
+    exactly one repository. Then processes chunks BATCH_SIZE at a time and
+    upserts each embedding alongside its source code and metadata.
 
     Args:
         chunks: A list of chunk dicts, as produced by chunker.chunk_repo.
@@ -60,8 +77,7 @@ def embed_and_store_chunks(chunks: list[dict]) -> int:
     Returns:
         The number of chunks successfully embedded and stored.
     """
-    chroma_client = get_chroma_client()
-    collection = chroma_client.get_or_create_collection(COLLECTION_NAME)
+    collection = reset_collection()
 
     stored_count = 0
 

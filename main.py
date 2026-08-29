@@ -104,9 +104,10 @@ def health():
 def index_repo(request: IndexRequest):
     """Indexes a Python repository for semantic code retrieval.
 
-    Parses the repository into function/class-level chunks, generates
-    embeddings for those chunks, and stores them in the persistent
-    ChromaDB collection.
+    Clears any previously indexed chunks, then parses the repository into
+    function/class-level chunks, generates embeddings, and stores them in
+    the persistent ChromaDB collection. Each successful /index therefore
+    represents exactly one repository.
 
     Args:
         request: Request containing the filesystem path of the repository
