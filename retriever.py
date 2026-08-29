@@ -20,24 +20,42 @@ def retrieve_chunks(question: str, top_k: int = 5) -> list[dict]:
         metadata, and vector distance for each matching chunk.
 
     Raises:
-        ValueError: If the question is empty or top_k is less than 1.
+        ValueError: If the question is empty, top_k is invalid, 
+            or no code has been indexed yet.
     """
-    if not question.strip():
+    question = question.strip()
+
+    if not question:
         raise ValueError("Question cannot be empty.")
 
     if top_k < 1:
         raise ValueError("top_k must be at least 1.")
 
-    # Embed the question using the same model used for stored code chunks.
+    # Embed the question using the same model used for the code chunks.
     query_embedding = embed_texts([question])[0]
 
     chroma_client = get_chroma_client()
-    collection = chroma_client.get_collection(COLLECTION_NAME)
 
-    # Smaller distances indicate a closer semantic match.
+    # Get the collection, or create an empty one if indexing has not happened yet.
+    collection = chroma_client.get_or_create_collection(
+        COLLECTION_NAME
+    )
+
+    # Stop early if there is no indexed code available to search.
+    indexed_count = collection.count()
+
+    if indexed_count == 0:
+        raise ValueError(
+            "No indexed code found. Run /index first."
+        )
+
+    # Never ask Chroma for more results than are actually stored.
+    result_count = min(top_k, indexed_count)
+
+    # Search for the stored code vectors closest to the question vector.
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=top_k,
+        n_results=result_count,
         include=["documents", "metadatas", "distances"],
     )
 
@@ -45,6 +63,7 @@ def retrieve_chunks(question: str, top_k: int = 5) -> list[dict]:
     metadatas = results["metadatas"][0]
     distances = results["distances"][0]
 
+    # Combine each retrieved code chunk with its metadata and distance.
     return [
         {
             "text": document,       # actual source code
