@@ -143,13 +143,24 @@ def query_codebase(request: QueryRequest):
     Returns:
         A QueryResponse containing the generated answer and source
         metadata for the retrieved chunks.
-    """
-    # Run retrieval and grounded LLM generation through the RAG pipeline.
-    result = answer_question(
-        question=request.question,
-        top_k=request.top_k,
-    )
 
+    Raises:
+        HTTPException: If the query cannot be processed.
+    """
+    try:
+        # Run retrieval and grounded LLM generation through the RAG pipeline.
+        result = answer_question(
+            question=request.question,
+            top_k=request.top_k,
+        )
+    except ValueError as error:
+        # Return an error if the RAG pipeline cannot process the query.
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    # Return the generated answer and the code chunks used for it.
     return QueryResponse(
         answer=result["answer"],
         sources=result["sources"],
