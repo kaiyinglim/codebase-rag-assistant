@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from chunker import chunk_repo
 from embedder import embed_and_store_chunks
@@ -26,9 +26,41 @@ class IndexResponse(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    """Input for POST /query — a natural language question about the repo."""
+    """Input for POST /query — a natural language question about the repo.
+
+    Attributes:
+        question: Natural-language question about the indexed repository.
+        top_k: Number of code chunks to retrieve for the question.
+    """
+
     question: str
-    top_k: int = 5  # number of most-similar chunks to retrieve as context
+    top_k: int = Field(
+        default=5, 
+        ge=1,   # greater than or equal to 1
+        le=20   # less than or equal to 20
+        )  
+    
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, question: str) -> str:
+        """Checks that the question contains meaningful text.
+
+        Args:
+            question: Question supplied in the API request.
+
+        Returns:
+            The question with surrounding whitespace removed.
+
+        Raises:
+            ValueError: If the question is empty or only contains whitespace.
+        """
+        question = question.strip()
+
+        # Do not run retrieval when there is no actual question.
+        if not question:
+            raise ValueError("Question cannot be empty.")
+
+        return question
 
 
 class QueryResponse(BaseModel):
